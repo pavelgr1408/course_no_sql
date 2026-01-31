@@ -33,6 +33,11 @@ networks:
     driver: bridge
 ```
 
+**Запуск контейнера MongoDB**
+```
+docker compose up -d
+```
+
 **Скриншот запущенного Docker-контейнера:**
 
 ![docker.png](../../screen/docker.png)
