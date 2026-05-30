@@ -1,8 +1,11 @@
 # Проектная работа: цена гарантий доставки
 
 **Курс:** NoSQL
+
 **Тема:** Цена гарантий доставки сообщений: сравнительное исследование Apache Kafka, RabbitMQ, Redis Streams и NATS JetStream
+
 **Окружение:** MacBook M3 (Apple Silicon, ARM64) + Docker Desktop
+
 **Дата:** май 2026
 
 ---
