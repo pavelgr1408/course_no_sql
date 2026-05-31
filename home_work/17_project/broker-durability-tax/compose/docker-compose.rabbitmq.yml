@@ -1,0 +1,67 @@
+# docker-compose.rabbitmq.yml — кластер 3 ноды rabbitmq:3.13-management, quorum queues.
+# Кластер собирается сам через classic_config peer discovery (см. rabbitmq/rabbitmq.conf).
+# Клиенты — сервис `client` внутри сети bench (НЕ localhost).
+#
+# Запуск:    docker compose -f compose/docker-compose.rabbitmq.yml up -d --build
+# Готовность КЛАСТЕРА (важно для quorum!): подождать, пока соберутся 3 ноды:
+#   docker exec rabbit1 rabbitmq-diagnostics -q cluster_status   # должно показать 3 ноды
+# Сброс:     docker compose -f compose/docker-compose.rabbitmq.yml down -v
+
+x-rabbit-common: &rabbit-common
+  image: rabbitmq:3.13-management
+  networks: [bench]
+  cpus: 2.0
+  mem_limit: 2g
+  environment: &rabbit-env
+    RABBITMQ_ERLANG_COOKIE: benchcookiebenchcookie
+    RABBITMQ_DEFAULT_USER: guest
+    RABBITMQ_DEFAULT_PASS: guest
+  volumes:
+    - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+  healthcheck:
+    test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+    interval: 10s
+    timeout: 5s
+    retries: 18
+    start_period: 30s
+
+services:
+  rabbit1:
+    <<: *rabbit-common
+    hostname: rabbit1
+    container_name: rabbit1
+    environment:
+      <<: *rabbit-env
+      RABBITMQ_NODENAME: rabbit@rabbit1
+
+  rabbit2:
+    <<: *rabbit-common
+    hostname: rabbit2
+    container_name: rabbit2
+    environment:
+      <<: *rabbit-env
+      RABBITMQ_NODENAME: rabbit@rabbit2
+
+  rabbit3:
+    <<: *rabbit-common
+    hostname: rabbit3
+    container_name: rabbit3
+    environment:
+      <<: *rabbit-env
+      RABBITMQ_NODENAME: rabbit@rabbit3
+
+  client:
+    build: ../client
+    container_name: bench-client
+    networks: [bench]
+    working_dir: /app
+    volumes:
+      - ../harness:/app
+    depends_on:
+      rabbit1: {condition: service_healthy}
+      rabbit2: {condition: service_healthy}
+      rabbit3: {condition: service_healthy}
+
+networks:
+  bench:
+    name: bench-rabbitmq

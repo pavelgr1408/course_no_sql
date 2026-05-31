@@ -1,0 +1,65 @@
+# docker-compose.nats.yml — кластер 3 ноды NATS с JetStream, nats:2.10-alpine.
+# Stream создаётся адаптером с num_replicas=1 (T1) или 3 (T2). Клиенты — сервис `client`
+# внутри сети bench (НЕ localhost). max_payload поднят для Сценария 3 (JSON ~20MB).
+#
+# Запуск:    docker compose -f compose/docker-compose.nats.yml up -d --build
+# Готовность: docker compose -f compose/docker-compose.nats.yml ps   (все healthy)
+# Сброс:     docker compose -f compose/docker-compose.nats.yml down -v
+#
+# ВАЖНО: число реплик stream'а нельзя менять на лету. Между T1 и T2 — холодный старт (down -v && up).
+
+x-nats-common: &nats-common
+  image: nats:2.10-alpine
+  networks: [bench]
+  cpus: 2.0
+  mem_limit: 2g
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O-", "http://localhost:8222/healthz"]
+    interval: 10s
+    timeout: 5s
+    retries: 12
+    start_period: 5s
+
+services:
+  nats1:
+    <<: *nats-common
+    hostname: nats1
+    container_name: nats1
+    command: >
+      -n nats1 -p 4222 -m 8222 -js -sd /data
+      -cluster_name benchjs -cluster nats://0.0.0.0:6222
+      -routes nats://nats1:6222,nats://nats2:6222,nats://nats3:6222
+
+  nats2:
+    <<: *nats-common
+    hostname: nats2
+    container_name: nats2
+    command: >
+      -n nats2 -p 4222 -m 8222 -js -sd /data
+      -cluster_name benchjs -cluster nats://0.0.0.0:6222
+      -routes nats://nats1:6222,nats://nats2:6222,nats://nats3:6222
+
+  nats3:
+    <<: *nats-common
+    hostname: nats3
+    container_name: nats3
+    command: >
+      -n nats3 -p 4222 -m 8222 -js -sd /data
+      -cluster_name benchjs -cluster nats://0.0.0.0:6222
+      -routes nats://nats1:6222,nats://nats2:6222,nats://nats3:6222
+
+  client:
+    build: ../client
+    container_name: bench-client
+    networks: [bench]
+    working_dir: /app
+    volumes:
+      - ../harness:/app
+    depends_on:
+      nats1: {condition: service_healthy}
+      nats2: {condition: service_healthy}
+      nats3: {condition: service_healthy}
+
+networks:
+  bench:
+    name: bench-nats

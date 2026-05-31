@@ -1,0 +1,85 @@
+# docker-compose.kafka.yml — кластер 3 брокера KRaft (без ZooKeeper), confluentinc/cp-kafka:7.6.
+# Клиенты (producer/consumer) запускаются как сервис `client` ВНУТРИ сети bench — НЕ через localhost.
+#
+# Запуск:   docker compose -f compose/docker-compose.kafka.yml up -d --build
+# Готовность: docker compose -f compose/docker-compose.kafka.yml ps   (все healthy)
+# Прогон:   см. fronts/FRONT_kafka.md
+# Сброс:    docker compose -f compose/docker-compose.kafka.yml down -v
+
+x-kafka-common: &kafka-common
+  image: confluentinc/cp-kafka:7.6.1
+  networks: [bench]
+  cpus: 2.0
+  mem_limit: 2g
+  healthcheck:
+    # листенер привязан к 0.0.0.0, поэтому проверка на localhost внутри контейнера работает
+    test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:29092"]
+    interval: 10s
+    timeout: 5s
+    retries: 18
+    start_period: 20s
+
+x-kafka-env: &kafka-env
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:29093,2@kafka-2:29093,3@kafka-3:29093
+  # bind на все интерфейсы; наружу в сеть анонсируем по hostname (см. ADVERTISED у каждой ноды)
+  KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+  KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+  KAFKA_MIN_INSYNC_REPLICAS: 2
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+  KAFKA_NUM_PARTITIONS: 3
+  KAFKA_LOG_RETENTION_MS: -1
+  # для Сценария 3 (JSON ~20MB) лимиты подняты заранее:
+  KAFKA_MESSAGE_MAX_BYTES: 26214400
+  KAFKA_REPLICA_FETCH_MAX_BYTES: 26214400
+  CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+
+services:
+  kafka-1:
+    <<: *kafka-common
+    hostname: kafka-1
+    container_name: kafka-1
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 1
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:29092
+
+  kafka-2:
+    <<: *kafka-common
+    hostname: kafka-2
+    container_name: kafka-2
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 2
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:29092
+
+  kafka-3:
+    <<: *kafka-common
+    hostname: kafka-3
+    container_name: kafka-3
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 3
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:29092
+
+  client:
+    build: ../client
+    container_name: bench-client
+    networks: [bench]
+    working_dir: /app
+    volumes:
+      - ../harness:/app
+    depends_on:
+      kafka-1: {condition: service_healthy}
+      kafka-2: {condition: service_healthy}
+      kafka-3: {condition: service_healthy}
+
+networks:
+  bench:
+    name: bench-kafka

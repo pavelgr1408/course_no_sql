@@ -189,6 +189,8 @@ broker-durability-tax/
 └── client/Dockerfile               # python:3.12-slim + 4 клиента
 ```
 
+[Ссылка на проект](broker-durability-tax)
+
 ---
 
 ## 4. Общий harness (один для всех 4 брокеров)
